@@ -17,14 +17,15 @@
 // app.listen(port,(req,res)=>{
 //     console.log(`server is runnin on port ${port}`)
 // })
-require('dotenv').config();
+
+const OTPModel = require ('./OTP/Otp')
 const express = require('express');
 const cors = require('cors');
 const databaseConnection = require('./datbase') 
-const UserModel = require ('./Models/UserModel')
+
 const UserRoutes = require ('./ROuter/UserRoutes')
 const app = express();
-const port = process.env.PORT || 5000;
+const port =5000;
 
 // Middleware
 app.use(cors());

@@ -1,80 +1,86 @@
-const twilio = require('twilio');
-const UserModel = require('../Models/UserModel');
-const OTPModel = require('../OTP/Otp');   // Model to store OTPs
+// controllers/userController.js
+const User = require('../Models/UserModel')
 
-// Twilio configuration
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const client = twilio(accountSid, authToken);
+// Function to send OTP (Stub function, replace with actual SMS API logic)
+const sendOtp = (mobile, otp) => {
+    console.log(`Sending OTP ${otp} to mobile number ${mobile}`);
+};
 
 // Generate OTP
-const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-// Send OTP
-const sendOTP = async (mobileNumber, otp) => {
-  try {
-    await client.messages.create({
-      body: `Your OTP is ${otp}`,
-      from: '+1234567890', // Replace with your Twilio phone number
-      to: mobileNumber,
-    });
-  } catch (error) {
-    throw new Error('Error sending OTP',error);
-  }
+// Send OTP function
+const sendOtpToUser = async (req, res) => {
+    const { mobile } = req.body;
+    const otp = generateOtp();
+    const otpExpires = Date.now() + 3600000; // 1 hour from now
+
+    try {
+        let user = await User.findOne({ mobile });
+        if (user) {
+            user.otp = otp;
+            user.otpExpires = otpExpires;
+        } else {
+            user = new User({ mobile, otp, otpExpires });
+        }
+        await user.save();
+
+        sendOtp(mobile, otp);
+
+        res.json({ message: 'OTP sent successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error',error });
+    }
 };
 
-const CreateUser = async (req, res) => {
-  const {  mobileNumber, otp } = req.body;
+// Verify OTP function
+const verifyOtp = async (req, res) => {
+    const { mobile, otp } = req.body;
 
-  // Check if user already exists
-  let find = await UserModel.findOne({ mobileNumber });
-  if (find) {
-    return res.json({ msg: 'User already exists', success: false });
-  }
+    try {
+        const user = await User.findOne({ mobile, otp });
+        if (!user) {
+            return res.status(400).json({ error: 'Invalid OTP' });
+        }
 
-  // Verify OTP
-  let otpEntry = await OTPModel.findOne({ mobileNumber });
-  if (!otpEntry || otpEntry.otp !== otp || otpEntry.expiry < Date.now()) {
-    return res.json({ msg: 'Invalid or expired OTP', success: false });
-  }
+        if (user.otpExpires < Date.now()) {
+            return res.status(400).json({ error: 'OTP expired' });
+        }
 
-  // Create user
-  try {
-    const user = await UserModel.create({
-      mobileNumber
-    });
+        // Clear OTP and expiration date after verification
+        user.otp = undefined;
+        user.otpExpires = undefined;
+        await user.save();
 
-    // Delete OTP after successful user creation
-    await OTPModel.deleteOne({ mobileNumber });
-
-    return res.json({ msg: 'User details saved successfully', user, success: true });
-  } catch (error) {
-    return res.json({ msg: 'Error in saving user details', error, success: false });
-  }
+        res.json({ message: 'OTP verified successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
 };
 
-// Function to initiate OTP process
-const initiateOTP = async (req, res) => {
-  const { mobileNumber } = req.body;
-  
-  // Generate OTP
-  const otp = generateOTP();
+// Create User function
+const createUser = async (req, res) => {
+    const { mobile } = req.body;
 
-  // Store OTP
-  const otpEntry = new OTPModel({
-    mobileNumber,
-    otp,
-    expiry: Date.now() + 300000, // 5 minutes validity
-  });
-  await otpEntry.save();
+    try {
+        let user = await User.findOne({ mobile });
+        if (user) {
+            // User already exists, return a message or update as needed
+            return res.status(400).json({ error: 'User already exists' });
+        }
 
-  // Send OTP
-  try {
-    await sendOTP(req,res);
-    res.json({ msg: 'OTP sent successfully', success: true });
-  } catch (error) {
-    res.json({ msg: 'Error sending OTP', error, success: false });
-  }
+        user = new User({ mobile }); // No OTP needed for creation
+        await user.save();
+
+        res.json({ message: 'User created successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
 };
 
-module.exports = { CreateUser, initiateOTP };
+// Export the controller functions
+module.exports = {
+    sendOtpToUser,
+    verifyOtp,
+    createUser
+};
